@@ -192,7 +192,7 @@ class EvidenceGraph:
         return [n for n in self._nodes if n.kind == kind]
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "before_dir": self.before_dir,
             "after_dir": self.after_dir,
             "nodes": [n.to_dict() for n in self._nodes],
@@ -200,6 +200,12 @@ class EvidenceGraph:
             "change_summaries": [cs.to_dict() for cs in self.change_summaries],
             "rules_report": self.rules_report.to_dict() if self.rules_report else None,
         }
+        try:
+            from .risk_model import calculate_risk_score
+            d["risk_assessment"] = dataclasses.asdict(calculate_risk_score(self))
+        except Exception:
+            pass
+        return d
 
     def to_json(self, indent: int = 2) -> str:
         """Serialize to JSON. Stdlib json — no pydantic/marshmallow."""

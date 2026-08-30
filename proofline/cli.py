@@ -229,6 +229,31 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write a SARIF report to FILE for GitHub Code Scanning integration",
     )
     scan.add_argument(
+        "--github-comment",
+        action="store_true",
+        default=False,
+        help="Automatically post verification report as a comment on GitHub PR",
+    )
+    scan.add_argument(
+        "--github-repo",
+        metavar="OWNER/REPO",
+        default=None,
+        help="GitHub repository slug e.g. 'owner/repo' (required for --github-comment)",
+    )
+    scan.add_argument(
+        "--github-pr",
+        type=int,
+        metavar="NUMBER",
+        default=None,
+        help="GitHub Pull Request number (required for --github-comment)",
+    )
+    scan.add_argument(
+        "--github-token",
+        metavar="TOKEN",
+        default=None,
+        help="GitHub Personal Access Token (defaults to GITHUB_TOKEN env var)",
+    )
+    scan.add_argument(
         "--fail-on",
         choices=["HIGH", "MEDIUM", "LOW"],
         default="HIGH",
@@ -314,6 +339,30 @@ def _build_parser() -> argparse.ArgumentParser:
         "init",
         help="Run the interactive Proofline setup wizard",
         description="Generate .env and .prooflineignore files interactively.",
+    )
+
+    # --- serve ---
+    serve = subparsers.add_parser(
+        "serve",
+        help="Start the Proofline zero-dependency REST API & dashboard server",
+        description="Run a local HTTP server for programmatic static verification API and visual dashboard.",
+    )
+    serve.add_argument(
+        "--port",
+        type=int,
+        default=8080,
+        help="Port to bind server to (default: 8080)",
+    )
+    serve.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host address to bind server to (default: 127.0.0.1)",
+    )
+    serve.add_argument(
+        "--no-browser",
+        action="store_true",
+        default=False,
+        help="Do not automatically open browser on startup",
     )
 
     # --- archive ---
@@ -623,6 +672,21 @@ def _run_scan(args: argparse.Namespace) -> int:
         if args.serve:
             serve_report(eg, port=args.port, open_browser=True)
 
+        if getattr(args, "github_comment", False):
+            if not args.github_repo or not args.github_pr:
+                print("\033[91m  Error: --github-repo and --github-pr are required when --github-comment is set.\033[0m")
+            else:
+                from .github_integration import post_github_pr_comment
+                ok, msg = post_github_pr_comment(
+                    repo=args.github_repo,
+                    pr_number=args.github_pr,
+                    eg=eg,
+                    token=getattr(args, "github_token", None),
+                )
+                if ok:
+                    print(f"\033[92m  [GitHub PR] {msg}\033[0m")
+                else:
+                    print(f"\033[93m  [GitHub PR Warning] {msg}\033[0m")
         return _handle_exit(args, eg, rules_report)
 
     finally:
@@ -809,6 +873,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     elif args.command == "archive":
         return _run_archive(args)
+    elif args.command == "serve":
+        from .server import serve_api_server
+        serve_api_server(port=args.port, host=args.host, open_browser=not args.no_browser)
+        return 0
     else:
         parser.print_help()
         return 0

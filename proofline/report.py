@@ -141,6 +141,10 @@ def render_cli_report(
     w(f"  Severity:   {_render_severity_badge(overall_sev)}")
     score = rr.confidence_score if rr else 100
     w(f"  Confidence: {score}/100 {_render_confidence_badge(overall_conf)}")
+    from .risk_model import calculate_risk_score
+    risk_info = calculate_risk_score(eg)
+    risk_badge = f"\033[91m[{risk_info.risk_level}]\033[0m" if risk_info.risk_level in ("CRITICAL", "HIGH") else f"\033[93m[{risk_info.risk_level}]\033[0m" if risk_info.risk_level == "MEDIUM" else f"\033[92m[{risk_info.risk_level}]\033[0m"
+    w(f"  Risk Score: {risk_info.total_score}/100 {risk_badge}")
     w()
 
     # Severity reasons
@@ -594,6 +598,10 @@ _HTML_TEMPLATE = """\
     <div class="big-label">Overall Confidence</div>
     <div class="big-value">${confidence_badge}</div>
   </div>
+  <div>
+    <div class="big-label">Quantitative Risk</div>
+    <div class="big-value ${risk_class}">${risk_score}/100 <span class="badge ${risk_badge_class}">${risk_level}</span></div>
+  </div>
 </div>
 
 <div id="pl-progress-wrap" class="progress-wrap">
@@ -881,6 +889,14 @@ def render_html_report(eg: EvidenceGraph) -> str:
     from .svg_generator import generate_svg_heatmap
     svg_heatmap = generate_svg_heatmap(eg)
     
+    from .risk_model import calculate_risk_score
+    risk_info = calculate_risk_score(eg)
+    risk_class = f"severity-{risk_info.risk_level.lower()}"
+    risk_badge_class = f"badge-{risk_info.risk_level.lower()}"
+    html = html.replace("${risk_score}", str(risk_info.total_score))
+    html = html.replace("${risk_level}", risk_info.risk_level)
+    html = html.replace("${risk_class}", risk_class)
+    html = html.replace("${risk_badge_class}", risk_badge_class)
     html = html.replace("${confidence_badge}", confidence_badge)
     html = html.replace("${symbol_sections}", symbol_sections)
     html = html.replace("${svg_heatmap}", svg_heatmap)

@@ -526,6 +526,40 @@ def _rule_8_import_changed(sym_diff: SymbolDiff) -> Optional[RuleResult]:
 # Engine
 # ---------------------------------------------------------------------------
 
+def _rule_11_orphan_code(
+    sym_diff: SymbolDiff,
+    caller_result: Optional[CallerResult],
+    routes: list[RouteInfo],
+) -> Optional[RuleResult]:
+    """Rule 11: Orphan Code Added (functions with zero static callers)."""
+    fn = sym_diff.after
+    if not fn:
+        return None
+    
+    # Only evaluate new functions or modified standalone functions
+    base_name = fn.name.split(".")[-1]
+    # Skip private, magic, setup, or top-level framework entrypoints
+    if base_name.startswith("_") or base_name in ("main", "cli", "app", "setup", "run"):
+        return None
+    # Skip HTTP routes (they are invoked via external web requests)
+    if routes:
+        return None
+    
+    total_callers = 0
+    if caller_result:
+        total_callers = len(caller_result.proven_callers) + len(caller_result.inferred_callers) + len(caller_result.unknown_callers)
+    
+    if total_callers == 0 and (sym_diff.before is None and sym_diff.after is not None):
+        return RuleResult(
+            rule_id=11,
+            rule_name="Orphaned code added",
+            severity=Severity.MEDIUM,
+            evidence=f"New function '{sym_diff.symbol_name}' has 0 callers in the codebase (potential dead code or unintegrated AI hallucination)",
+            confidence=Confidence.PROVEN,
+            location_hint=str(fn.location) if fn.location else "",
+        )
+    return None
+
 def _rule_10_high_complexity(sym_diff: SymbolDiff, test_assoc: TestAssociation) -> Optional[RuleResult]:
     """Rule 10: Flags functions with cyclomatic complexity > 10."""
     fn = sym_diff.after or sym_diff.before
@@ -596,6 +630,14 @@ def evaluate_symbol(
         rules_fired.append(r)
 
     r = _rule_9_doc_rot(sym_diff)
+    if r:
+        rules_fired.append(r)
+
+    r = _rule_10_high_complexity(sym_diff, test_assoc)
+    if r:
+        rules_fired.append(r)
+
+    r = _rule_11_orphan_code(sym_diff, caller_result, routes)
     if r:
         rules_fired.append(r)
 
